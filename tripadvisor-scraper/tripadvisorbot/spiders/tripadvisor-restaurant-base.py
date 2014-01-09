@@ -1,3 +1,5 @@
+import re
+
 from scrapy.spider import BaseSpider
 from scrapy.selector import Selector
 from scrapy.http import Request
@@ -50,10 +52,17 @@ class TripAdvisorRestaurantBaseSpider(BaseSpider):
 		tripadvisor_address_item = TripAdvisorAddressItem()
 
 		tripadvisor_address_item['street'] = snode_address.xpath('address/span/span[@class="format_address"]/span[@class="street-address"]/text()').extract()[0]
-		tripadvisor_address_item['postal_code'] = snode_address.xpath('address/span/span[@class="format_address"]/span[@class="locality"]/span[@property="v:postal-code"]/text()').extract().pop(0).strip()
-		tripadvisor_address_item['locality'] = snode_address.xpath('address/span/span[@class="format_address"]/span[@class="locality"]/span[@property="v:locality"]/text()').extract().pop(0).strip()
-		tripadvisor_address_item['country'] = snode_address.xpath('address/span/span[@class="format_address"]/span[@class="country-name"]/text()').extract()[0]
+		
+		snode_address_postal_code = snode_address.xpath('address/span/span[@class="format_address"]/span[@class="locality"]/span[@property="v:postal-code"]/text()').extract()
+		if snode_address_postal_code:
+			tripadvisor_address_item['postal_code'] = snode_address.xpath('address/span/span[@class="format_address"]/span[@class="locality"]/span[@property="v:postal-code"]/text()').extract().pop(0).strip()
 
+		snode_address_locality = snode_address.xpath('address/span/span[@class="format_address"]/span[@class="locality"]/span[@property="v:locality"]/text()').extract()
+		if snode_address_locality:
+			tripadvisor_address_item['locality'] = snode_address.xpath('address/span/span[@class="format_address"]/span[@class="locality"]/span[@property="v:locality"]/text()').extract().pop(0).strip()
+
+		tripadvisor_address_item['country'] = snode_address.xpath('address/span/span[@class="format_address"]/span[@class="country-name"]/text()').extract()[0].strip()
+		
 		tripadvisor_item['address'] = tripadvisor_address_item
 		
 		# TripAdvisor reviews for item.
@@ -65,18 +74,18 @@ class TripAdvisorRestaurantBaseSpider(BaseSpider):
 		for snode_review in snode_reviews:
 			tripadvisor_review_item = TripAdvisorReviewItem()
 
-			print "SINGLE SEARCH RESULT"
-			print snode_review
+			#print "SINGLE SEARCH RESULT"
+			#print snode_review
 
 			tripadvisor_review_item['title'] = snode_review.xpath('div[@class="quote"]/a/span[@class="noQuotes"]/text()').extract()
 			tripadvisor_review_item['description'] = snode_review.xpath('div[@class="entry"]/p/text()').extract()
 			tripadvisor_review_item['stars'] = snode_review.xpath('div[@class="rating reviewItemInline"]/span[starts-with(@class, "rate rate_s")]/img[@class="sprite-ratings"]/@content').extract()
 			
-			# TODO: Levare "Reviewed " all'inizio della stringa.
-			tripadvisor_review_item['date'] = snode_review.xpath('div[@class="rating reviewItemInline"]/span[@class="ratingDate"]/text()').extract()
+			snode_review_item_date = snode_review.xpath('div[@class="rating reviewItemInline"]/span[@class="ratingDate"]/text()').extract()[0].strip()
+			tripadvisor_review_item['date'] = re.sub(r'Reviewed ', '', snode_review_item_date, flags=re.IGNORECASE)
 
-			print "RATES SINGLE ITEM"
-			print snode_review.xpath('div[@class="rating reviewItemInline"]/span[starts-with(@class, "rate rate_s")]/img[@class="sprite-ratings"]')
+			#print "RATES SINGLE ITEM"
+			#print snode_review.xpath('div[@class="rating reviewItemInline"]/span[starts-with(@class, "rate rate_s")]/img[@class="sprite-ratings"]')
 			#print tripadvisor_review_item
 
 			tripadvisor_review_items.append(tripadvisor_review_item)
