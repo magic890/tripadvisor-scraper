@@ -15,6 +15,7 @@ class TripAdvisorItem(Item):
 	name = Field()
 	address = Field()
 	avg_stars = Field()
+	photos = Field()
 	reviews = Field()
 
 class TripAdvisorAddressItem(Item):
@@ -23,6 +24,10 @@ class TripAdvisorAddressItem(Item):
 	postal_code = Field()
 	locality = Field()
 	country = Field()
+
+class TripAdvisorPhotoItem(Item):
+	# URL to image.
+	url = Field()
 	
 class TripAdvisorReviewItem(Item):
 
