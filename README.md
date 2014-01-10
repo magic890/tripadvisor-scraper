@@ -12,5 +12,5 @@ Install:
 # Have fun
 ```shell
 cd tripadvisor-scraper/
-scrapy crawl tripadvisor-restaurant-base -o output/result.json
+scrapy crawl tripadvisor-restaurant -o output/result.json
 ```
