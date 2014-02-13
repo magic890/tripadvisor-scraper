@@ -15,15 +15,14 @@ class TripAdvisorRestaurantBaseSpider(BaseSpider):
 	allowed_domains = ["tripadvisor.com"]
 	base_uri = "http://www.tripadvisor.com"
 	start_urls = [
-		base_uri + "/RestaurantSearch?geo=187849&q=Milan%2C+Italy&cat=&pid="
+		base_uri + "/RestaurantSearch?geo=60763&q=New+York+City%2C+New+York&cat=&pid="
 	]
 
 
 	# Entry point for BaseSpider.
+	# Page type: /RestaurantSearch
 	def parse(self, response):
 		tripadvisor_items = []
-
-		#print "FUNC 1"
 
 		sel = Selector(response)
 		snode_restaurants = sel.xpath('//div[@id="EATERY_SEARCH_RESULTS"]/div[starts-with(@class, "listing")]')
@@ -43,11 +42,11 @@ class TripAdvisorRestaurantBaseSpider(BaseSpider):
 		
 
 	# Popolate reviews and address in item index for a single item.
+	# Page type: /Restaurant_Review
 	def parse_search_page(self, response):
 		tripadvisor_item = response.meta['tripadvisor_item']
 		sel = Selector(response)
 
-		#print "FUNC 2"
 
 		# TripAdvisor address for item.
 		snode_address = sel.xpath('//div[@class="wrap infoBox"]')
@@ -56,18 +55,26 @@ class TripAdvisorRestaurantBaseSpider(BaseSpider):
 		tripadvisor_address_item['street'] = clean_parsed_string(get_parsed_string(snode_address, 'address/span/span[@class="format_address"]/span[@class="street-address"]/text()'))
 
 		snode_address_postal_code = clean_parsed_string(get_parsed_string(snode_address, 'address/span/span[@class="format_address"]/span[@class="locality"]/span[@property="v:postal-code"]/text()'))
-		# Prevent default null field in JSON.
 		if snode_address_postal_code:
 			tripadvisor_address_item['postal_code'] = snode_address_postal_code
 
 		snode_address_locality = clean_parsed_string(get_parsed_string(snode_address, 'address/span/span[@class="format_address"]/span[@class="locality"]/span[@property="v:locality"]/text()'))
-		# Prevent default null field in JSON.
 		if snode_address_locality:
 			tripadvisor_address_item['locality'] = snode_address_locality
 
 		tripadvisor_address_item['country'] = clean_parsed_string(get_parsed_string(snode_address, 'address/span/span[@class="format_address"]/span[@class="country-name"]/text()'))
 		
 		tripadvisor_item['address'] = tripadvisor_address_item
+
+
+		# TripAdvisor photos for item.
+		tripadvisor_item['photos'] = []
+		snode_main_photo = sel.xpath('//div[@class="photoGrid photoBx"]')
+
+		snode_main_photo_url = clean_parsed_string(get_parsed_string(snode_main_photo, 'div[starts-with(@class, "photo ")]/a/@href'))
+		if snode_main_photo_url:
+			yield Request(url=self.base_uri + snode_main_photo_url, meta={'tripadvisor_item': tripadvisor_item}, callback=self.parse_fetch_photo)
+
 
 		tripadvisor_item['reviews'] = []
 
@@ -80,32 +87,23 @@ class TripAdvisorRestaurantBaseSpider(BaseSpider):
 
 
 	# If the page is not a basic review page, we can proceed with parsing the expanded reviews.
+	# Page type: /ShowUserReviews
 	def parse_fetch_review(self, response):
 		tripadvisor_item = response.meta['tripadvisor_item']
 		sel = Selector(response)
 
 		counter_page_review = response.meta['counter_page_review']
 
-		#print "C:"
-		#print counter_page_review
-
 		# Limitatore numero di pagine di review da passare. Totale review circa 5*N.
-		if counter_page_review < 200:
+		if counter_page_review < 500:
 			counter_page_review = counter_page_review + 1
 
 			# TripAdvisor reviews for item.
 			snode_reviews = sel.xpath('//div[@id="REVIEWS"]/div[starts-with(@class, "reviewSelector")]/div[contains(@class, "review")]/div[@class="col2of2"]')
 
-			#print "ALL SEARCH RESULT"
-			#print snode_reviews.extract()
-
 			# Reviews for item.
 			for snode_review in snode_reviews:
-				# BUG SOVRASCRIVE CON LE ULTIME 5 DELL'ULTIMA PAGINA
 				tripadvisor_review_item = TripAdvisorReviewItem()
-
-				#print "SINGLE SEARCH RESULT"
-				#print snode_review
 				
 				tripadvisor_review_item['title'] = clean_parsed_string(get_parsed_string(snode_review, 'div[@class="quote"]/text()'))
 
@@ -119,26 +117,7 @@ class TripAdvisorRestaurantBaseSpider(BaseSpider):
 				snode_review_item_date = time.strptime(snode_review_item_date, '%B %d, %Y') if snode_review_item_date else None
 				tripadvisor_review_item['date'] = time.strftime('%Y-%m-%d', snode_review_item_date) if snode_review_item_date else None
 
-				#print tripadvisor_review_item['date']
-
-				#print "RATES SINGLE ITEM"
-				#print snode_review.xpath('div[@class="rating reviewItemInline"]/span[starts-with(@class, "rate rate_s")]/img[@class="sprite-ratings"]')
-				#print tripadvisor_review_item
-
-
 				tripadvisor_item['reviews'].append(tripadvisor_review_item)
-
-
-			# Photos for item.
-			tripadvisor_photos_item = []
-			tripadvisor_photo_item = TripAdvisorPhotoItem()
-			#print 'PHOTO DOM'
-			#print sel.xpath('//img[@id="HERO_PHOTO"]').extract()
-			#TODO: IMG SRC empty because we've to eval the JS in order to populate the src.
-			#print 'PHOTO DOM SRC'
-			#print sel.xpath('//img[@id="HERO_PHOTO"]/@src').extract()
-			tripadvisor_photo_item['url'] = clean_parsed_string(get_parsed_string(sel, '//img[@id="HERO_PHOTO"]/@src'))
-			tripadvisor_item['photos'] = tripadvisor_photos_item
 
 
 			# Find the next page link if available and go on.
@@ -147,7 +126,26 @@ class TripAdvisorRestaurantBaseSpider(BaseSpider):
 				yield Request(url=self.base_uri + next_page_url, meta={'tripadvisor_item': tripadvisor_item, 'counter_page_review' : counter_page_review}, callback=self.parse_fetch_review)
 			else:
 				yield tripadvisor_item
-	
+
 		# Limitatore numero di pagine di review da passare. Totale review circa 5*N.
 		else:
 			yield tripadvisor_item
+
+
+	# Popolate photos for a single item.
+	# Page type: /LocationPhotoDirectLink
+	def parse_fetch_photo(self, response):
+		tripadvisor_item = response.meta['tripadvisor_item']
+		sel = Selector(response)
+
+		# TripAdvisor photos for item.
+		snode_photos = sel.xpath('//img[@class="taLnk big_photo"]')
+
+		# Photos for item.
+		for snode_photo in snode_photos:
+			tripadvisor_photo_item = TripAdvisorPhotoItem()
+
+			snode_photo_url = clean_parsed_string(get_parsed_string(snode_photo, '@src'))
+			if snode_photo_url:
+				tripadvisor_photo_item['url'] = snode_photo_url
+				tripadvisor_item['photos'].append(tripadvisor_photo_item)
