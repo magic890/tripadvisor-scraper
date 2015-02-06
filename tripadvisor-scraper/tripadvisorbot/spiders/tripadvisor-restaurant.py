@@ -9,6 +9,12 @@ from tripadvisorbot.items import *
 from tripadvisorbot.spiders.crawlerhelper import *
 
 
+# Constants.
+# Max reviews pages to crawl.
+# Reviews collected are around: 5 * MAX_REVIEWS_PAGES
+MAX_REVIEWS_PAGES = 500
+
+
 class TripAdvisorRestaurantBaseSpider(BaseSpider):
 	name = "tripadvisor-restaurant"
 
@@ -31,12 +37,16 @@ class TripAdvisorRestaurantBaseSpider(BaseSpider):
 		for snode_restaurant in snode_restaurants:
 
 			tripadvisor_item = TripAdvisorItem()
-			tripadvisor_item['url'] = clean_parsed_string(get_parsed_string(snode_restaurant, 'div[@class="quality easyClear"]/a[@class="property_title"]/@href'))
-			tripadvisor_item['name'] = clean_parsed_string(get_parsed_string(snode_restaurant, 'div[@class="quality easyClear"]/a[@class="property_title"]/text()'))
-			tripadvisor_item['avg_stars'] = clean_parsed_string(get_parsed_string(snode_restaurant, 'div[@class="wrap"]/div[@class="entry wrap"]/div[@class="wrap"]/div[@class="rs rating"]/span[starts-with(@class, "rate rate_s")]/img[@class="sprite-ratings"]/@content'))
+
+			tripadvisor_item['url'] = self.base_uri + clean_parsed_string(get_parsed_string(snode_restaurant, 'div[@class="quality easyClear"]/span/a[@class="property_title "]/@href'))
+			tripadvisor_item['name'] = clean_parsed_string(get_parsed_string(snode_restaurant, 'div[@class="quality easyClear"]/span/a[@class="property_title "]/text()'))
 			
+			# Cleaning string and taking only the first part before whitespace.
+			snode_restaurant_item_avg_stars = clean_parsed_string(get_parsed_string(snode_restaurant, 'div[@class="wrap"]/div[@class="entry wrap"]/div[@class="description"]/div[@class="wrap"]/div[@class="rs rating"]/span[starts-with(@class, "rate")]/img[@class="sprite-ratings"]/@alt'))
+			tripadvisor_item['avg_stars'] = re.match(r'(\S+)', snode_restaurant_item_avg_stars).group()
+
 			# Popolate reviews and address for current item.
-			yield Request(url=self.base_uri + tripadvisor_item['url'], meta={'tripadvisor_item': tripadvisor_item}, callback=self.parse_search_page)
+			yield Request(url=tripadvisor_item['url'], meta={'tripadvisor_item': tripadvisor_item}, callback=self.parse_search_page)
 
 			tripadvisor_items.append(tripadvisor_item)
 		
@@ -62,7 +72,7 @@ class TripAdvisorRestaurantBaseSpider(BaseSpider):
 		if snode_address_locality:
 			tripadvisor_address_item['locality'] = snode_address_locality
 
-		tripadvisor_address_item['country'] = clean_parsed_string(get_parsed_string(snode_address, 'address/span/span[@class="format_address"]/span[@class="country-name"]/text()'))
+		tripadvisor_address_item['country'] = clean_parsed_string(get_parsed_string(snode_address, 'address/span/span[@class="format_address"]/span[@class="locality"]/span[@property="v:region"]/text()'))
 		
 		tripadvisor_item['address'] = tripadvisor_address_item
 
@@ -78,7 +88,7 @@ class TripAdvisorRestaurantBaseSpider(BaseSpider):
 
 		tripadvisor_item['reviews'] = []
 
-		# The default page contains the reviews but the reviews are shrunk and need to click 'More' to view the complete content.
+		# The default page contains the reviews but the reviews are shrink and need to click 'More' to view the complete content.
 		# An alternate way is to click one of the reviews in the page to open the expanded reviews display page.
 		# We're using this last solution to avoid AJAX here.
 		expanded_review_url = clean_parsed_string(get_parsed_string(sel, '//div[contains(@class, "basic_review")]//a/@href'))
@@ -94,12 +104,12 @@ class TripAdvisorRestaurantBaseSpider(BaseSpider):
 
 		counter_page_review = response.meta['counter_page_review']
 
-		# Limitatore numero di pagine di review da passare. Totale review circa 5*N.
-		if counter_page_review < 500:
+		# Limit max reviews pages to crawl.
+		if counter_page_review < MAX_REVIEWS_PAGES:
 			counter_page_review = counter_page_review + 1
 
 			# TripAdvisor reviews for item.
-			snode_reviews = sel.xpath('//div[@id="REVIEWS"]/div[starts-with(@class, "reviewSelector")]/div[contains(@class, "review")]/div[@class="col2of2"]')
+			snode_reviews = sel.xpath('//div[@id="REVIEWS"]/div/div[contains(@class, "review")]/div[@class="col2of2"]/div[@class="innerBubble"]')
 
 			# Reviews for item.
 			for snode_review in snode_reviews:
@@ -110,7 +120,9 @@ class TripAdvisorRestaurantBaseSpider(BaseSpider):
 				# Review item description is a list of strings.
 				# Strings in list are generated parsing user intentional newline. DOM: <br>
 				tripadvisor_review_item['description'] = get_parsed_string_multiple(snode_review, 'div[@class="entry"]/p/text()')
-				tripadvisor_review_item['stars'] = clean_parsed_string(get_parsed_string(snode_review, 'div[@class="rating reviewItemInline"]/span[starts-with(@class, "rate rate_s")]/img[@class="sprite-ratings"]/@content'))
+				# Cleaning string and taking only the first part before whitespace.
+				snode_review_item_stars = clean_parsed_string(get_parsed_string(snode_review, 'div[@class="rating reviewItemInline"]/span[starts-with(@class, "rate")]/img/@alt'))
+				tripadvisor_review_item['stars'] = re.match(r'(\S+)', snode_review_item_stars).group()
 				
 				snode_review_item_date = clean_parsed_string(get_parsed_string(snode_review, 'div[@class="rating reviewItemInline"]/span[@class="ratingDate"]/text()'))
 				snode_review_item_date = re.sub(r'Reviewed ', '', snode_review_item_date, flags=re.IGNORECASE)
